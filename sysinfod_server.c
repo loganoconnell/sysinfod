@@ -5,16 +5,22 @@
 
 #define DAEMON_ID "com.logan.sysinfod"
 
-static os_log_t getLog(void) {
+static os_log_t get_log(void) {
     static dispatch_once_t once;
     static os_log_t log;
     
     // Ensures log is a singleton
     dispatch_once(&once, ^{
-        log = os_log_create(DAEMON_ID, "info");
+        log = os_log_create(DAEMON_ID, "server");
     });
 
     return log;
+}
+
+static uint64_t get_thread_ID(void) {
+    uint64_t thread_ID;
+    pthread_threadid_np(pthread_self(), &thread_ID);
+    return thread_ID;
 }
 
 static uint64_t uptime() {
@@ -34,7 +40,7 @@ static uint64_t uptime() {
 
 static void send_reply(xpc_object_t connection, xpc_object_t object ) {
     const char *input = xpc_dictionary_get_string(object, "ACK");
-    os_log(getLog(), "Connection received: %s", input);
+    os_log(get_log(), "Connection received: %s", input);
     
     xpc_object_t reply = xpc_dictionary_create_reply(object);
     xpc_dictionary_set_uint64(reply, "FIN", uptime());
@@ -43,11 +49,11 @@ static void send_reply(xpc_object_t connection, xpc_object_t object ) {
 }
 
 static void handle_connection(xpc_object_t connection) {
-    os_log(getLog(), "sysinfod server woke for XPC with PID: %d, thread ID: %lu", getpid(), (unsigned long)pthread_self());
+    os_log(get_log(), "sysinfod server woke for XPC with PID: %d, thread ID: %llu", getpid(), get_thread_ID());
     
     xpc_connection_set_event_handler(connection, ^(xpc_object_t object) {
         if (xpc_get_type(object) == XPC_TYPE_ERROR) {
-            os_log(getLog(), "Goodbye");
+            os_log(get_log(), "Goodbye");
         }
         
         else if (xpc_get_type(object) == XPC_TYPE_DICTIONARY) {
@@ -56,7 +62,7 @@ static void handle_connection(xpc_object_t connection) {
         
         else {
             char *description = xpc_copy_description(object);
-            os_log(getLog(), "Connection received with erroneous object: %s", description);
+            os_log(get_log(), "Connection received with erroneous object: %s", description);
             free(description);
         }
     });
@@ -65,7 +71,7 @@ static void handle_connection(xpc_object_t connection) {
 }
 
 int main(int argc, const char * argv[]) {
-    os_log(getLog(), "sysinfod server starting up with PID: %d, thread ID: %lu", getpid(), (unsigned long)pthread_self());
+    os_log(get_log(), "sysinfod server starting up with PID: %d, thread ID: %llu", getpid(), get_thread_ID());
     
     char queue_name[sizeof(DAEMON_ID) + 8 + 1];
     sprintf(queue_name, "%s%s", DAEMON_ID, ".server");
@@ -83,7 +89,7 @@ int main(int argc, const char * argv[]) {
         
         else {
             char *description = xpc_copy_description(object);
-            os_log(getLog(), "Connection errored with object: %s", description);
+            os_log(get_log(), "Connection errored with object: %s", description);
             free(description);
         }
     });

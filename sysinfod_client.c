@@ -1,6 +1,19 @@
 #include <xpc/xpc.h>
+#include <os/log.h>
 
 #define DAEMON_ID "com.logan.sysinfod"
+
+static os_log_t get_log(void) {
+    static dispatch_once_t once;
+    static os_log_t log;
+    
+    // Ensures log is a singleton
+    dispatch_once(&once, ^{
+        log = os_log_create(DAEMON_ID, "client");
+    });
+
+    return log;
+}
 
 static xpc_object_t create_message() {
     xpc_object_t message = xpc_dictionary_create_empty();
@@ -13,7 +26,7 @@ static void process_reply(xpc_object_t reply, xpc_connection_t connection, xpc_o
     
     while (xpc_get_type(reply) == XPC_TYPE_ERROR) {
         if (retry == 0) {
-            printf("Too many retries performed, exiting...");
+            os_log(get_log(), "Too many retries performed, exiting...");
             exit(1);
         }
         
@@ -23,7 +36,7 @@ static void process_reply(xpc_object_t reply, xpc_connection_t connection, xpc_o
         }
         
         else {
-            printf("Something is permanently wrong here, exiting...");
+            os_log(get_log(), "Something is permanently wrong here, exiting...");
             exit(1);
         }
         
@@ -31,7 +44,7 @@ static void process_reply(xpc_object_t reply, xpc_connection_t connection, xpc_o
     }
 
     uint64_t response = xpc_dictionary_get_uint64(reply, "FIN");
-    printf("Uptime is %llu seconds\n", response);
+    os_log(get_log(), "Uptime is %llu seconds\n", response);
 }
 
 static xpc_connection_t create_daemon_connection() {
@@ -52,13 +65,16 @@ static xpc_connection_t create_daemon_connection() {
 }
 
 int main(int argc, const char * argv[]) {
-    printf("sysinfod client starting up\n");
+    os_log(get_log(), "sysinfod client starting up\n");
 
     dispatch_async(dispatch_get_main_queue(), ^{
         xpc_object_t message = create_message();
         xpc_connection_t connection = create_daemon_connection();
-
+        
         xpc_object_t reply = xpc_connection_send_message_with_reply_sync(connection, message);
+        
+        os_log(get_log(), "Sending message: %s", xpc_dictionary_get_string(message, "ACK"));
+        
         process_reply(reply, connection, message);
 
         exit(0);
